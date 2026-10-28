@@ -1,0 +1,150 @@
+From: moron <moron@localhost>
+Subject: [PATCH] sweet: support OnePlus 3T buttons and touchscreen
+
+Support OnePlus 3T (MSM8996 Pro) keys and touch in XNU:
+- sweet_keys:
+  * Power: PM8994 (SID 0) PON RT_STS 0x810 bit 0 (same as Pixel 1)
+  * Volume Up: PM8994 GPIO 3 (PPID 0x0c2), RT_STS 0xc210 bit 0
+  * Volume Down / Home: PM8994 GPIO 2 (PPID 0x0c1), RT_STS 0xc110 bit 0
+  Uses the SPMI arbiter v2 observer channel directly.
+- sweet_touch:
+  * Synaptics S3320 (RMI4, F12 2D sensor) at I2C address 0x20
+  * BLSP2 QUP6 at 0x075ba000 (clock 0x326008/0x326020)
+  * Pins: TLMM 87 (SDA), 88 (SCL), 89 (Reset), 125 (Attention/IRQ)
+---
+ bsd/dev/sweet_keys.c  | 85 ++++++++++++++++++++++++++++++++++++++++---
+ bsd/dev/sweet_touch.c | 54 ++++++++++++++++++++++-----
+ 2 files changed, 124 insertions(+), 15 deletions(-)
+
+diff --git a/bsd/dev/sweet_keys.c b/bsd/dev/sweet_keys.c
+--- a/bsd/dev/sweet_keys.c
++++ b/bsd/dev/sweet_keys.c
+@@ -37,6 +37,12 @@ void sweet_keys_init(void);
+ /* pinctrl@1010000, one 4 KiB tile per GPIO: CFG +0, IN_OUT +4 */
+ #define KEYS_TLMM_PA     0x01010000u
+ #define KEYS_GPIO_VOLUP  126u
+ #define KEYS_GPIO_VOLDN  121u
++
++/* OnePlus 3T: PM8994 SPMI GPIOs (SID 0) */
++#define KEYS_OP3T_GPIO_VOLDN_PPID  0x0c1u  /* GPIO 2 */
++#define KEYS_OP3T_GPIO_VOLUP_PPID  0x0c2u  /* GPIO 3 */
++#define KEYS_OP3T_GPIO_RT_STS      0x10u
++
+ enum { KEY_POWER = 0, KEY_VOLUP = 1, KEY_HOME = 3 };
+ 
+-static vm_offset_t keys_core, keys_obs, keys_cnfg, keys_volup, keys_voldn;
+-static uint16_t keys_pon_apid = KEYS_NO_APID;
++static vm_offset_t keys_core, keys_obs, keys_cnfg, keys_volup, keys_voldn;
++static vm_offset_t keys_op3t_obs_voldn, keys_op3t_obs_volup;
++static uint16_t keys_pon_apid = KEYS_NO_APID;
++static uint16_t keys_op3t_voldn_apid = KEYS_NO_APID, keys_op3t_volup_apid = KEYS_NO_APID;
++static bool is_op3t = false;
+ static uint32_t keys_version, keys_last_status;
+ static bool keys_started;
+ static int keys_sleep_chan;
+@@ -109,6 +122,12 @@ keys_thread(void *arg, wait_result_t result)
+ 	int state[3] = {0, 0, 0};
+ 	unsigned errors = 0;
+ 	(void)arg;
+ 	(void)result;
+ 	for (;;) {
+ 		uint8_t pon = 0;
+ 		bool pok = keys_read(keys_pon_apid, KEYS_PON_RT, &pon);
+-		int now[3] = {
+-			!!(pon & 1u),
+-			!(keys_rd(keys_volup, 4) & 1u),
+-			!(keys_rd(keys_voldn, 4) & 1u),
+-		};
++		int now[3];
++		if (is_op3t) {
++			uint8_t vup = 1, vdn = 1;
++			if (keys_op3t_volup_apid != KEYS_NO_APID && keys_op3t_obs_volup) {
++				*(volatile uint32_t *)keys_op3t_obs_volup = (1u << 27) | (KEYS_OP3T_GPIO_RT_STS << 4);
++				vup = *(volatile uint32_t *)keys_op3t_obs_volup & 1u;
++			}
++			if (keys_op3t_voldn_apid != KEYS_NO_APID && keys_op3t_obs_voldn) {
++				*(volatile uint32_t *)keys_op3t_obs_voldn = (1u << 27) | (KEYS_OP3T_GPIO_RT_STS << 4);
++				vdn = *(volatile uint32_t *)keys_op3t_obs_voldn & 1u;
++			}
++			now[0] = !!(pon & 1u);
++			now[1] = !vup;
++			now[2] = !vdn;
++		} else {
++			now[0] = !!(pon & 1u);
++			now[1] = !(keys_rd(keys_volup, 4) & 1u);
++			now[2] = !(keys_rd(keys_voldn, 4) & 1u);
++		}
+ 		if (!pok && keys_pon_apid != KEYS_NO_APID && (errors++ % 250u) == 0) {
+ 			printf("SWEET KEYS: PON read error arb-status=%#x\n", keys_last_status);
+ 		}
+@@ -154,6 +173,11 @@ sweet_keys_init(void)
+ 	keys_core = ml_io_map(KEYS_CORE_PA, 0x1000);
+ 	keys_cnfg = ml_io_map(KEYS_CNFG_PA, 0x1000);
++	void const *prop;
++	unsigned int sz;
++	if (PE_get_default("target-type", &prop, &sz) && sz >= 3 && !memcmp(prop, "D20", 3)) {
++		is_op3t = (PE_parse_boot_argn("op3t", NULL, 0) == 1);
++	}
++	if (!is_op3t) {
+ 		keys_volup = keys_gpio_map(KEYS_GPIO_VOLUP);
+ 		keys_voldn = keys_gpio_map(KEYS_GPIO_VOLDN);
+ 		if (!keys_volup || !keys_voldn) return;
++	}
+ 	if (!keys_core || !keys_cnfg) {
+ 		printf("SWEET KEYS: MMIO mapping failed\n");
+ 		return;
+ 	}
+ 	keys_version = keys_rd(keys_core, 0);
+ 	if (keys_version >= 0x20000000u && keys_version < 0x50000000u) {
+ 		keys_pon_apid = keys_find_apid(0x008);
++		if (is_op3t) {
++			keys_op3t_voldn_apid = keys_find_apid(KEYS_OP3T_GPIO_VOLDN_PPID);
++			keys_op3t_volup_apid = keys_find_apid(KEYS_OP3T_GPIO_VOLUP_PPID);
++			if (keys_op3t_voldn_apid != KEYS_NO_APID)
++				keys_op3t_obs_voldn = ml_io_map(KEYS_OBS_PA + 0x8000u * keys_op3t_voldn_apid, 0x1000);
++			if (keys_op3t_volup_apid != KEYS_NO_APID)
++				keys_op3t_obs_volup = ml_io_map(KEYS_OBS_PA + 0x8000u * keys_op3t_volup_apid, 0x1000);
++		}
+ 	}
+--- a/bsd/dev/sweet_touch.c
++++ b/bsd/dev/sweet_touch.c
+@@ -53,6 +53,13 @@ void sweet_touch_init(void);
+ #define TOUCH_QUP_PA      0x07577000u
++#define TOUCH_OP3T_QUP_PA 0x075ba000u
++#define TOUCH_OP3T_CBCR   0x00326008u
++#define TOUCH_OP3T_RCGR   0x00326020u
++#define TOUCH_OP3T_SDA    87u
++#define TOUCH_OP3T_SCL    88u
+ #define TOUCH_TLMM_PA     0x01010000u   /* one 4 KiB tile per GPIO: CFG +0, IN_OUT +4 */
+ #define TOUCH_RESET       89u
+ #define TOUCH_ATTN        125u
+@@ -80,6 +87,7 @@ static vm_offset_t touch_qup, touch_tlmm, touch_attn_io;
+ static uint8_t touch_page = 0xffu;
++static bool touch_is_op3t = false;
+ 
+ static inline void
+ touch_pin_init(uint32_t gpio, uint32_t func, bool pullup)
+@@ -103,11 +111,18 @@ sweet_touch_init(void)
+ 	if (!on) {
+ 		printf("SWEET TOUCH: disabled (sweettouch=0)\n");
+ 		return;
+ 	}
++	touch_is_op3t = (PE_parse_boot_argn("op3t", NULL, 0) == 1);
++	vm_offset_t qup_pa = touch_is_op3t ? TOUCH_OP3T_QUP_PA : TOUCH_QUP_PA;
++	touch_qup = ml_io_map(qup_pa, 0x1000);
+ 	touch_tlmm = ml_io_map(TOUCH_TLMM_PA, 0x1000);
+ 	if (!touch_qup || !touch_tlmm) {
+ 		printf("SWEET TOUCH: MMIO mapping failed\n");
+ 		return;
+ 	}
+-	touch_pin_init(TOUCH_SDA, 3, true);
+-	touch_pin_init(TOUCH_SCL, 3, true);
++	if (touch_is_op3t) {
++		touch_pin_init(TOUCH_OP3T_SDA, 3, true);
++		touch_pin_init(TOUCH_OP3T_SCL, 3, true);
++	} else {
++		touch_pin_init(TOUCH_SDA, 3, true);
++		touch_pin_init(TOUCH_SCL, 3, true);
++	}
+ 	touch_pin_init(TOUCH_RESET, 0, false);
+ 	touch_pin_init(TOUCH_ATTN, 0, true);
