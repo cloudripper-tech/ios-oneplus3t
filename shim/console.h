@@ -1,7 +1,12 @@
 #pragma once
 #include <stdint.h>
 
-#ifdef PIXEL1
+#if defined(ONEPLUS3T)
+#define FB_BASE		0x83401000UL	/* cont_splash_mem = MDP VIG0 SRC0_ADDR on OP3T */
+#define FB_W		1080
+#define FB_H		1920
+#define FB_BPP		3		/* RGB888, 24bpp */
+#elif defined(PIXEL1)
 #define FB_BASE		0xc0001000UL	/* cont_splash_mem = MDP VIG0 SRC0_ADDR */
 #define FB_W		1080
 #define FB_H		1920

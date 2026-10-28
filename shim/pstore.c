@@ -7,8 +7,18 @@
  */
 #include "pstore.h"
 
+#if defined(ONEPLUS3T)
+/*
+ * OP3T ramoops: 2 MiB at 0xac000000.
+ * record_size = 0x20000 (dump records)
+ * console_size = 0x100000 (1 MiB console at 0xac000000 + record_size)
+ */
+#define PRZ_BASE	(0xac000000UL + 0x20000UL)
+#define PRZ_DATA_MAX	(0x100000UL - 12)
+#else
 #define PRZ_BASE	0x83540000UL
 #define PRZ_DATA_MAX	(0x80000UL - 12)
+#endif
 #define PRZ_SIG		0x43474244U	/* "DBGC" */
 
 #define PRZ_W(off)	(*(volatile uint32_t *)(PRZ_BASE + (off)))

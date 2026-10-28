@@ -30,7 +30,7 @@ static void put_px(int x, int y, uint32_t c)
 
 void con_flush(void)
 {
-#ifdef PIXEL1
+#if defined(PIXEL1) || defined(ONEPLUS3T)
 	/*
 	 * Command-mode panel, no autorefresh: MDP CTL0 START sends one frame
 	 * (TE wait + transfer, up to ~32 ms). Clear PING_PONG_0_DONE (MDP

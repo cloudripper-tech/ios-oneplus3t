@@ -47,6 +47,18 @@ PIXEL1 = dict(
           (0x100, 1, 2150400000), (0x101, 1, 2150400000)],
 )
 
+# OnePlus 3T (oneplus3t, MSM8996 Pro)
+ONEPLUS3T = dict(
+    phys_base=0x100000000, mem_size=0xfcc00000,  # upper DDR bank (up to 6GB)
+    gicd=0x9bc0000, gicr=0x9c00000, gicr_stride=0x40000,
+    vtimer=27,
+    fb=0x83401000, fb_size=0x23ff000, fb_w=1080, fb_h=1920, fb_bpp=24,
+    fb_kickoff=0x90201c,
+    ufs=0x624000, ufs_size=0x2500,
+    cpus=[(0x0, 0, 1593600000), (0x1, 0, 1593600000),
+          (0x100, 1, 2150400000), (0x101, 1, 2150400000)],
+)
+
 BOOT_MANIFEST_HASH = hashlib.sha384(b'sweet boot manifest').digest()
 
 # The iOS userland is the iPhone X (iPhone10,3 / D22AP) IPSW. MobileGestalt
@@ -85,13 +97,17 @@ def node(name, props=(), children=()):
     return n
 
 
-def build(seed=None, qemu=False, highmem=False, pixel1=False):
+def build(seed=None, qemu=False, highmem=False, pixel1=False, oneplus3t=False):
     """qemu=True: same tree, but with QEMU virt's GIC addresses and CNTFRQ (tools/qemu-sweet.py)."""
     phys_base, mem_size = (HIGH_PHYS_BASE, HIGH_MEM_SIZE) if highmem else (PHYS_BASE, MEM_SIZE)
     gicd, gicr, timebase = (QEMU_GICD, QEMU_GICR, QEMU_TIMEBASE) if qemu else (GICD, GICR, TIMEBASE)
     vtimer = QEMU_VTIMER_INTID if qemu else VTIMER_INTID
+    is_msm8996 = pixel1 or oneplus3t
     if pixel1:
         P = PIXEL1
+        phys_base, mem_size, gicd, gicr, vtimer = P['phys_base'], P['mem_size'], P['gicd'], P['gicr'], P['vtimer']
+    elif oneplus3t:
+        P = ONEPLUS3T
         phys_base, mem_size, gicd, gicr, vtimer = P['phys_base'], P['mem_size'], P['gicd'], P['gicr'], P['vtimer']
     seed = seed if seed is not None else os.urandom(64)
     phandle = iter(range(1, 1000))
@@ -116,7 +132,7 @@ def build(seed=None, qemu=False, highmem=False, pixel1=False):
         # from /chosen, the pixel size from IOMobileFramebuffer. Scale 0 makes
         # SpringBoard's FBSDisplayMode "infxinf@0x" invalid. 1080x2400 @3x =
         # 360x800 points (like iPhone X class devices); iPhone 8: 750x1334 @2x.
-        ('display-scale', u32(2 if pixel1 else 3)),
+        ('display-scale', u32(2 if is_msm8996 else 3)),
         # XNU derives IOPlatformUUID (gethostuuid) from these on arm; without
         # them CFPreferences cannot use kCFPreferencesCurrentHost (no ByHost
         # files), so e.g. DataMigration never records LastSystemVersion and
@@ -152,7 +168,7 @@ def build(seed=None, qemu=False, highmem=False, pixel1=False):
     # QEMU retains its original single-CPU tree: its MPIDRs differ from sweet.
     cpu_nodes = []
     for core in range(1 if qemu else 8):
-        if pixel1:
+        if is_msm8996:
             break
         cpu_nodes.append(node(f'cpu{core}', [
             ph(),
@@ -174,8 +190,8 @@ def build(seed=None, qemu=False, highmem=False, pixel1=False):
             ('peripheral-frequency', u32(timebase)),
             ('fixed-frequency', u32(timebase)),
         ]))
-    # Pixel 1: 2 + 2 Kryo (same core, different clocks) as one SMP cluster too.
-    for core, (mpidr, cluster, hz) in enumerate(PIXEL1['cpus'] if pixel1 else []):
+    # Pixel 1 / OnePlus 3T: 2 + 2 Kryo (same core, different clocks) as one SMP cluster too.
+    for core, (mpidr, cluster, hz) in enumerate((PIXEL1 if pixel1 else ONEPLUS3T)['cpus'] if is_msm8996 else []):
         cpu_nodes.append(node(f'cpu{core}', [
             ph(),
             ('device_type', cstr('cpu')),
@@ -204,7 +220,7 @@ def build(seed=None, qemu=False, highmem=False, pixel1=False):
         ('interrupt-controller', b''),
         ('virtual-timer-intid', u32(vtimer)),
         ('reg', u64(gicd - SOC_BASE, GICD_SIZE, gicr - SOC_BASE, GICR_SIZE)),
-    ] + ([('redistributor-stride', u32(PIXEL1['gicr_stride']))] if pixel1 else []))
+    ] + ([('redistributor-stride', u32((PIXEL1 if pixel1 else ONEPLUS3T)['gicr_stride']))] if is_msm8996 else []))
     arm_io = node('arm-io', [
         ph(),
         ('device_type', cstr('sweet-io')),
@@ -225,8 +241,8 @@ def build(seed=None, qemu=False, highmem=False, pixel1=False):
             ph(),
             ('device_type', cstr('display-subsystem')),
             ('compatible', cstr('sweet,display')),
-            ('canvas-width', u32(750 if pixel1 else 1125)),
-            ('canvas-height', u32(1334 if pixel1 else 2436)),
+            ('canvas-width', u32(750 if is_msm8996 else 1125)),
+            ('canvas-height', u32(1334 if is_msm8996 else 2436)),
         ])] + ([
         # Wi-Fi (bsd/dev/sailfish_wlan.c, QCA6174 on PCIe): launchd starts
         # wifid only if the tree has a node named wlan; SailfishWLAN (the
@@ -235,7 +251,7 @@ def build(seed=None, qemu=False, highmem=False, pixel1=False):
             ph(),
             ('device_type', cstr('wlan')),
             ('compatible', cstr('wlan-pcie,sailfish')),
-        ])] if pixel1 else []))
+        ])] if is_msm8996 else []))
 
     fbcon = node('sweet-fbcon', [
         ph(),
@@ -244,8 +260,8 @@ def build(seed=None, qemu=False, highmem=False, pixel1=False):
         ('height', u32(FB_H)),
         ('stride', u32(FB_STRIDE)),
     ])
-    if pixel1:
-        P = PIXEL1
+    if is_msm8996:
+        P = PIXEL1 if pixel1 else ONEPLUS3T
         fbcon = node('sweet-fbcon', [
             ph(),
             ('reg', u64(P['fb'], P['fb_size'])),
@@ -261,7 +277,7 @@ def build(seed=None, qemu=False, highmem=False, pixel1=False):
     ufs = node('sweet-ufs', [
         ph(),
         ('compatible', cstr('qcom,ufshc')),
-        ('reg', u64(PIXEL1['ufs'], PIXEL1['ufs_size']) if pixel1 else u64(UFS, UFS_SIZE)),
+        ('reg', u64((PIXEL1 if pixel1 else ONEPLUS3T)['ufs'], (PIXEL1 if pixel1 else ONEPLUS3T)['ufs_size']) if is_msm8996 else u64(UFS, UFS_SIZE)),
     ])
 
     # pmap_compute_max_asids requires the node even when no overrides are set.
@@ -275,13 +291,13 @@ def build(seed=None, qemu=False, highmem=False, pixel1=False):
     buttons = node('buttons', [
         ph(),
         ('button-names', cstr('volup') + cstr('voldown') + cstr('hold')),
-        ('home-button-type', u32(1 if pixel1 else 2)),  # iPhone 8: Home button
+        ('home-button-type', u32(1 if is_msm8996 else 2)),  # iPhone 8: Home button
         ('opposed-power-vol-buttons', u32(1)),
     ])
 
-    product_props = d22ap_product(D20AP_ADT if pixel1 else D22AP_ADT)
-    if pixel1 and product_props:
-        # The Pixel panel is sRGB, and with "P3" iOS picks deep-color snapshot
+    product_props = d22ap_product(D20AP_ADT if is_msm8996 else D22AP_ADT)
+    if is_msm8996 and product_props:
+        # The panel is sRGB, and with "P3" iOS picks deep-color snapshot
         # surfaces (MaterialKit b3a8, CA w30r) that CoreAnimation's CPU renderer
         # cannot draw into: the dock / App Library backgrounds stayed white.
         product_props = [(k, cstr('sRGB') if k in ('artwork-display-gamut', 'display-gamut') else v)
@@ -292,10 +308,10 @@ def build(seed=None, qemu=False, highmem=False, pixel1=False):
     # hw.model/hw.target (D22AP), model is hw.machine/hw.product
     # (iPhone10,3). 'xiaomi,sweet' stays for SweetPlatformExpert matching.
     # Pixel 1 keeps 'xiaomi,sweet' for the same kernel matching (one platform expert).
-    ident = (('D20AP', 'iPhone10,1', 'D20', 'google,sailfish', 'qcom,msm8996') if pixel1 else
+    ident = (('D20AP', 'iPhone10,1', 'D20', 'oneplus,oneplus3t' if oneplus3t else 'google,sailfish', 'qcom,msm8996') if is_msm8996 else
              ('D22AP', 'iPhone10,3', 'D22', 'xiaomi,sweet', 'qcom,sm7150'))
     compat = cstr(ident[0]) + cstr(ident[1]) + cstr('xiaomi,sweet')
-    if pixel1:
+    if is_msm8996:
         compat += cstr(ident[3])
     return node('device-tree', [
         ph(),
@@ -310,7 +326,8 @@ def build(seed=None, qemu=False, highmem=False, pixel1=False):
 
 
 if __name__ == '__main__':
-    root = build(qemu='--qemu' in sys.argv, highmem='--highmem' in sys.argv, pixel1='--pixel1' in sys.argv)
+    root = build(qemu='--qemu' in sys.argv, highmem='--highmem' in sys.argv,
+                 pixel1='--pixel1' in sys.argv, oneplus3t='--oneplus3t' in sys.argv)
     blob = adt.serialize(root)
     open(sys.argv[1], 'wb').write(blob)
     if '--dump' in sys.argv:
