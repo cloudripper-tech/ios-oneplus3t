@@ -52,7 +52,7 @@ ONEPLUS3T = dict(
     phys_base=0x100000000, mem_size=0xfcc00000,  # upper DDR bank (up to 6GB)
     gicd=0x9bc0000, gicr=0x9c00000, gicr_stride=0x40000,
     vtimer=27,
-    fb=0x83401000, fb_size=0x23ff000, fb_w=1080, fb_h=1920, fb_bpp=24,
+    fb=0x83400000, fb_size=0x2400000, fb_w=1080, fb_h=1920, fb_bpp=24,
     fb_kickoff=0x90201c,
     ufs=0x624000, ufs_size=0x2500,
     cpus=[(0x0, 0, 1593600000), (0x1, 0, 1593600000),
