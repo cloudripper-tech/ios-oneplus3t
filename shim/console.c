@@ -18,11 +18,19 @@ static int row;
 static void put_px(int x, int y, uint32_t c)
 {
 #if FB_BPP == 3
-	/* MDP unpack pattern 0x00020001: bytes B, G, R */
+#ifdef ONEPLUS3T
+	/* OnePlus 3T: RGB byte order */
+	volatile uint8_t *p = (volatile uint8_t *)con_fb + y * FB_STRIDE + x * 3;
+	p[0] = c >> 16;
+	p[1] = c >> 8;
+	p[2] = c;
+#else
+	/* Pixel 1: MDP unpack pattern 0x00020001: bytes B, G, R */
 	volatile uint8_t *p = (volatile uint8_t *)con_fb + y * FB_STRIDE + x * 3;
 	p[0] = c;
 	p[1] = c >> 8;
 	p[2] = c >> 16;
+#endif
 #else
 	con_fb[y * (FB_STRIDE / 4) + x] = c;
 #endif
