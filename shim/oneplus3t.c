@@ -61,8 +61,18 @@ void shim_main(uint64_t dtb)
 	plog_hex("DTB", dtb);
 	plog_hex("PAYLOAD", (uintptr_t)_end);
 
+	/* Probe MDP5 registers for VIG0 / RGB0 pipe configuration */
+	uint32_t vig0_src_sz = rd32(0x905118);   /* MDSS_MDP_REG_SSPP_SRC_SIZE */
+	uint32_t vig0_ystride = rd32(0x905108);  /* MDSS_MDP_REG_SSPP_SRC_YSTRIDE */
+	uint32_t vig0_src_fmt = rd32(0x905150);  /* MDSS_MDP_REG_SSPP_SRC_FORMAT */
+	uint32_t vig0_src0_addr = rd32(0x905120);/* MDSS_MDP_REG_SSPP_SRC0_ADDR */
+	uint32_t rgb0_ystride = rd32(0x915108);
+
 	con_clear(0);
 	con_str("SHIM", "oneplus3t (msm8996pro) loader");
+	con_hex("VIG0_ADDR", vig0_src0_addr);
+	con_hex2("VIG0_SZ", "sz=", vig0_src_sz, "fmt=", vig0_src_fmt);
+	con_hex2("STRIDE", "vig0=", vig0_ystride, "rgb0=", rgb0_ystride);
 	con_skip();
 
 #if WDT_SECS
