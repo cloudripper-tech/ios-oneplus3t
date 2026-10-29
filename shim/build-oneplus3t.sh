@@ -58,3 +58,17 @@ truncate -s $((16#$size)) out/oneplus3t/Image
 mkdir -p out
 ../tools/mkboot-v0.sh "$stock" out/oneplus3t/Image out/oneplus3t-boot.img
 echo "Successfully built out/oneplus3t-boot.img"
+
+# Loader test "kernel" (shim/stub.c)
+$CC $CFLAGS -c stub.c -o out/oneplus3t/stub.o
+if [ "$LD" = "ld.lld" ]; then
+	$LD -T shim.ld --build-id=none -N \
+		out/oneplus3t/stub.o out/oneplus3t/pstore.o out/oneplus3t/console.o -o out/oneplus3t/stub.elf
+else
+	$CC $CFLAGS -static -T shim.ld -Wl,--build-id=none -Wl,--no-warn-rwx-segments -Wl,-N \
+		out/oneplus3t/stub.o out/oneplus3t/pstore.o out/oneplus3t/console.o -o out/oneplus3t/stub.elf
+fi
+$OBJCOPY -O binary out/oneplus3t/stub.elf out/oneplus3t/stub.bin
+stub_size=$($NM out/oneplus3t/stub.elf | awk '$3=="_end"{print $1}')
+truncate -s $((16#$stub_size)) out/oneplus3t/stub.bin
+echo "Successfully built out/oneplus3t/stub.bin"

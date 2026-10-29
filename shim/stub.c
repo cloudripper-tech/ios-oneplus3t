@@ -5,6 +5,7 @@
  */
 #include <stdint.h>
 #include "pstore.h"
+#include "console.h"
 
 __asm__(".section .text.head, \"ax\"\n"
 	".globl _head\n"
@@ -24,6 +25,16 @@ struct boot_args {	/* loader.c, Revision/Version 2 */
 };
 
 #define FILL_OFF	0x100000UL	/* filler segment: virtBase + this */
+
+static void delay_ms(unsigned ms)
+{
+	uint64_t frq, end, now;
+	__asm__ volatile("mrs %0, cntfrq_el0" : "=r"(frq));
+	__asm__ volatile("mrs %0, cntpct_el0" : "=r"(now));
+	end = now + (frq * ms) / 1000;
+	while (now < end)
+		__asm__ volatile("mrs %0, cntpct_el0" : "=r"(now));
+}
 
 void __attribute__((noreturn)) stub_main(volatile struct boot_args *ba)
 {
@@ -58,6 +69,14 @@ void __attribute__((noreturn)) stub_main(volatile struct boot_args *ba)
 	for (uint64_t off = 0; off < len; off += 8)
 		sum = sum * 31 + *(volatile uint64_t *)(ba->physBase + FILL_OFF + off);
 	plog_hex("  got sum", sum);
+
+	con_skip();
+	con_str("STUB", "payload reached in DDR!");
+	con_hex("STUB_BA", (uintptr_t)ba);
+	con_hex2("STUB_MEM", "base=", ba->physBase, "size=", ba->memSize);
+	con_hex2("SUM", "got=", sum, "len=", len);
+	con_flush();
+	delay_ms(15000);
 
 	plog_str("STUB: done, PSCI reset\n");
 	register uint64_t x0 __asm__("x0") = 0x84000009UL;	/* SYSTEM_RESET */
