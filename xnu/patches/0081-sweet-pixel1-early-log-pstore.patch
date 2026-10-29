@@ -256,11 +256,11 @@ index 9eea047..5d2856f 100644
  #define __ARM_16K_PG__            1
  
 +/*
-+ * Early boot log (osfmk/arm64/sweet_early.c): the Pixel 1 ramoops console
++ * Early boot log (osfmk/arm64/sweet_early.c): the OnePlus 3T ramoops console
 + * zone and the 32MB block start.s / arm_vm_init map around it.
 + */
-+#define SWEET_EARLY_LOG_BLOCK     0x82000000
-+#define SWEET_EARLY_LOG_PRZ       0x83540000
++#define SWEET_EARLY_LOG_BLOCK     0xac000000
++#define SWEET_EARLY_LOG_PRZ       0xac020000
 +
  #define HAS_GIC_V3                1
  
