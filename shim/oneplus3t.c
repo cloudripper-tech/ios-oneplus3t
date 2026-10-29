@@ -93,9 +93,21 @@ void secondary_main(uint64_t idx)
 void exc_handler(uint64_t slot, uint64_t *regs)
 {
 	(void)regs;
+	uint64_t esr = rsr("esr_el1");
+	uint64_t far = rsr("far_el1");
+	uint64_t elr = rsr("elr_el1");
 	plog_hex("EXC slot", slot);
-	plog_hex("ESR", rsr("esr_el1"));
-	plog_hex("FAR", rsr("far_el1"));
-	plog_hex("ELR", rsr("elr_el1"));
-	psci_reset();
+	plog_hex("ESR", esr);
+	plog_hex("FAR", far);
+	plog_hex("ELR", elr);
+
+	con_clear(0);
+	con_str("PANIC", "XNU early exception!");
+	con_hex("SLOT", slot);
+	con_hex("ESR", esr);
+	con_hex("FAR", far);
+	con_hex("ELR", elr);
+	con_flush();
+	for (;;)
+		__asm__ volatile("wfe");
 }

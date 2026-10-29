@@ -143,8 +143,12 @@ const char *loader_boot_rd(uint64_t rd_start, uint64_t rd_end)
 
 	uintptr_t entry_pa = p->entry_va + pa_of_va_base;
 	con_hex("JUMP", entry_pa);
-	con_str("XNU", "jumping (fbcon clears screen)");
+	con_str("XNU", "jumping (intercepting exceptions)");
 	con_flush();
+
+	/* Install our exception vector table so if XNU faults before setting its own, we catch it */
+	extern void vectors(void);
+	__asm__ volatile("msr vbar_el1, %0" : : "r"(vectors) : "memory");
 
 	/* Everything was written with the MMU and caches off; drop any stale I-cache lines too. */
 	__asm__ volatile("dsb sy; ic iallu; dsb sy; isb" ::: "memory");
