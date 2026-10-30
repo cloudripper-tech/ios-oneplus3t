@@ -14,6 +14,7 @@ This project adapts the Google Pixel 1 (`sailfish`) and Redmi Note 10 Pro (`swee
 | Hardware Topology | Matched memory topology (6 GB upper DDR bank at `0x100000000`), GICv3 (`0x9bc0000`, stride `0x40000`), UFS host (`0x624000`), and Kryo CPU cores |
 | Input Drivers | PM8994 Volume Up/Down and Home buttons (`KEY_HOME`), plus Synaptics S3320 touchscreen (`0x075ba000`) |
 | iOS Root Filesystem | 16 GB case-sensitive HFS+ userland image assembled from the official iPhone 8 iOS 16.7.16 IPSW and flashed via Android sparse format (`iOSRoot.simg`) to `userdata` (`rd=ufsroot0`) |
+| Kernel Execution & Handoff | Bare-metal shim successfully relocates XNU segments into 64-bit high DRAM (`0x100000000+`), cleans data cache (`dc civac`), and enters XNU's entry point. Early bootstrap execution reaches initial runtime routines before triggering architecture-specific exception traps. |
 
 ## Repository Layout
 
