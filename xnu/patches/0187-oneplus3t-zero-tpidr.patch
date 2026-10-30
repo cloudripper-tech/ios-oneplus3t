@@ -1,0 +1,10 @@
+--- a/osfmk/arm64/start.s
++++ b/osfmk/arm64/start.s
+@@ -558,6 +558,7 @@ LEXT(start_first_cpu)
+ 	// in ml_parse_cpu_topology(), which happens later in bootstrap.
+ 	msr		TPIDRRO_EL0, xzr
+ 	msr		TPIDR_EL0, xzr
++	msr		TPIDR_EL1, xzr
+ 
+ 	// Set up exception stack pointer
+ 	adrp	x0, EXT(excepstack_top)@page		// Load top of exception stack
