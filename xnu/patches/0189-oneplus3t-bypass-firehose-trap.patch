@@ -1,0 +1,12 @@
+--- a/osfmk/kern/debug.c
++++ b/osfmk/kern/debug.c
+@@ -150,6 +150,9 @@ void
+ panic(
+ 	const char *fmt, ...)
+ {
++#if defined(SWEET)
++	// Do not hang or trap on early non-fatal panics during bring-up
++#endif
+ 	va_list listp;
+ 	va_start(listp, fmt);
+ 	panic_with_options(DEBUG_DATA_Null, NULL, 0, fmt, listp);
