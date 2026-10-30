@@ -1,4 +1,4 @@
-# ios-oneplus3t
+# ios-oneplus3t (PROJECT ON HIATUS)
 
 **Porting Apple's iOS 16 XNU kernel to the OnePlus 3T (`oneplus3t`, Snapdragon 821 / MSM8996 Pro).**
 
