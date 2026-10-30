@@ -1,0 +1,15 @@
+--- a/pexpert/arm/pe_fiq.c
++++ b/pexpert/arm/pe_fiq.c
+@@ -56,6 +56,12 @@ find_gicr_pe_base()
+ 	// We only care about aff1 and aff0
+ 	uint32_t phys_id = __builtin_arm_rsr64("MPIDR_EL1") & (MPIDR_AFF1_MASK | MPIDR_AFF0_MASK);
+ 
++#if defined(SWEET)
++	if (phys_id == 0x100 || phys_id == 0x101) {
++		phys_id = (1 << 8) | (phys_id & 0xff);
++	}
++#endif
++
+ 	for (vm_offset_t offset = 0; offset < gicr_size; offset += GICR_STRIDE) {
+ 		vm_offset_t gicr_pe_base = gicr_base + offset;
+ 		uint32_t typer = gicr_read32(gicr_pe_base + GICR_TYPER);
